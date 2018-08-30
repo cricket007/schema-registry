@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -38,8 +39,6 @@ import io.confluent.kafka.schemaregistry.storage.KafkaSchemaRegistry;
 import io.confluent.kafka.schemaregistry.storage.serialization.SchemaRegistrySerializer;
 import io.confluent.rest.Application;
 import io.confluent.rest.RestConfigException;
-
-import static io.confluent.kafka.schemaregistry.rest.extensions.PrettyQueryExtension.QUERY_PARAM_PRETTY;
 
 public class SchemaRegistryRestApplication extends Application<SchemaRegistryConfig> {
 
@@ -70,11 +69,6 @@ public class SchemaRegistryRestApplication extends Application<SchemaRegistryCon
       System.exit(1);
     }
 
-    schemaRegistryResourceExtensions =
-        schemaRegistryConfig.getConfiguredInstances(
-            schemaRegistryConfig.definedResourceExtensionConfigName(),
-            SchemaRegistryResourceExtension.class);
-
     config.register(RootResource.class);
     config.register(new ConfigResource(schemaRegistry));
     config.register(new SubjectsResource(schemaRegistry));
@@ -82,26 +76,27 @@ public class SchemaRegistryRestApplication extends Application<SchemaRegistryCon
     config.register(new SubjectVersionsResource(schemaRegistry));
     config.register(new CompatibilityResource(schemaRegistry));
 
-    try {
-      new PrettyQueryExtension()
-              .register(config, schemaRegistryConfig, schemaRegistry);
-    } catch (SchemaRegistryException e) {
-      log.error(String.format(
-              "Error registering ?%s query resource extension. Starting up without it",
-              QUERY_PARAM_PRETTY), e);
+    schemaRegistryResourceExtensions = new ArrayList<>();
+    schemaRegistryResourceExtensions.add(new PrettyQueryExtension());
+
+    List<SchemaRegistryResourceExtension> extensions =
+            schemaRegistryConfig.getConfiguredInstances(
+                    schemaRegistryConfig.definedResourceExtensionConfigName(),
+                    SchemaRegistryResourceExtension.class);
+    if (extensions != null) {
+      schemaRegistryResourceExtensions.addAll(extensions);
     }
 
-    if (schemaRegistryResourceExtensions != null) {
-      try {
-        for (SchemaRegistryResourceExtension
-            schemaRegistryResourceExtension : schemaRegistryResourceExtensions) {
-          schemaRegistryResourceExtension.register(config, schemaRegistryConfig, schemaRegistry);
-        }
-      } catch (SchemaRegistryException e) {
-        log.error("Error starting the schema registry", e);
-        System.exit(1);
+    try {
+      for (SchemaRegistryResourceExtension
+          schemaRegistryResourceExtension : schemaRegistryResourceExtensions) {
+        schemaRegistryResourceExtension.register(config, schemaRegistryConfig, schemaRegistry);
       }
+    } catch (SchemaRegistryException e) {
+      log.error("Error starting the schema registry", e);
+      System.exit(1);
     }
+
   }
 
   @Override
